@@ -1,240 +1,239 @@
 //included libraries
-  #include "avr/pgmspace.h"
-  #include "Thread.h"
-  #include "ThreadController.h"
+#include "avr/pgmspace.h"
+#include "Thread.h"
+#include "ThreadController.h"
 
 //settings
-  #define serialrate        115200
-  #define serialmessagesize 200
+#define serialrate        115200
+#define serialmessagesize 200
 
 //setings  
   //threads controllers
-    ThreadController controller = ThreadController();
-    Thread controllercommunication = Thread();
-  
-    ThreadController communicationusb = ThreadController();
-    Thread communicationusbread = Thread();
+	ThreadController controller = ThreadController();
+	Thread controllercommunication = Thread();
+
+	ThreadController communicationusb = ThreadController();
+	Thread communicationusbread = Thread();
 
 //system
-  String serialmessageusb;
-  int transfermode = 0;
-  int glcdcontrolstep = 0;
+	String serialmessageusb;
+	int transfermode = 0;
+	int glcdcontrolstep = 0;
 
 void setup(void) {
 
-  Serial.begin(serialrate);
-  serialmessageusb.reserve(serialmessagesize);
+	Serial.begin(serialrate);
+	serialmessageusb.reserve(serialmessagesize);
 
-//threads  
-  //controller
-    //controller glcd
-      controller.add(&controllercommunication);
-      controllercommunication.onRun(communication);
-      controllercommunication.setInterval(200);
+	//threads  
+		//controller
+			//controller glcd
+				controller.add(&controllercommunication);
+				controllercommunication.onRun(communication);
+				controllercommunication.setInterval(200);
 
-  //communicate transfer
-    //communication transfer mode
-      communicationusb.add(&communicationusbread);
-      communicationusbread.onRun(usbread);
-      communicationusbread.setInterval(0);
+	//communicate transfer
+		//communication transfer mode
+			communicationusb.add(&communicationusbread);
+			communicationusbread.onRun(usbread);
+			communicationusbread.setInterval(0);
 
 }
 
 void loop(void) {
 
-  if (transfermode < 2) {
-    controller.run();
-  }
-  else{
-    communicationusb.run();
-  }
+	if (transfermode < 2) {
+		controller.run();
+	}
+	else {
+		communicationusb.run();
+	}
 
 }
 
 void communication(void) {
 
-  if (Serial.available() > 0){
-    serialmessageusb = Serial.readStringUntil('\n');
-    Serial.flush();
-    if (serialmessageusb.equals(F("WC00001"))){
-      transfermode = 1;
-      Serial.print(F("@RC00001                                                              %092#"));
-      Serial.print('\n');
-    }
-  }     
-  
-  if (transfermode == 1 ){
-    glcdcontrolstep ++;
-  }
+	if (Serial.available() > 0) {
+		serialmessageusb = Serial.readStringUntil('\n');
+		Serial.flush();
+		if (serialmessageusb.equals(F("WC00001"))) {
+			transfermode = 1;
+			Serial.print(F("@RC00001                                                              %092#"));
+			Serial.print('\n');
+		}
+	}
 
-  if (glcdcontrolstep > 8){
-    glcdcontrolstep = 0;
-    transfermode = 2;
-    
-    Serial.print('\n');
-  }
+	if (transfermode == 1) {
+		glcdcontrolstep++;
+	}
+
+	if (glcdcontrolstep > 8) {
+		glcdcontrolstep = 0;
+		transfermode = 2;
+
+		Serial.print('\n');
+	}
 }
 
 //usb read
 void usbread(void) {
 
-  //sttings
-  #define usbreadbuffer 75
-  #define usbreadmod 99
-  #define usbreadprefix "@"
-  #define usbreadlimiter "#"
-  #define usbreadtab "%"
+	//sttings
+#define usbreadbuffer 75
+#define usbreadmod 99
+#define usbreadprefix "@"
+#define usbreadlimiter "#"
+#define usbreadtab "%"
 
-  //function
-  if (Serial.available() > 0){
-    serialmessageusb = Serial.readStringUntil('\n');
-    Serial.flush();
+//function
+	if (Serial.available() > 0) {
+		serialmessageusb = Serial.readStringUntil('\n');
+		Serial.flush();
 
-    if (serialmessageusb.substring(0, 1) == usbreadprefix && serialmessageusb.substring(usbreadbuffer - 1) == usbreadlimiter){
-      
-      String serialdata = serialmessageusb.substring(1, serialmessageusb.indexOf(usbreadtab));
-      String serialchecksum = serialmessageusb.substring(serialmessageusb.indexOf(usbreadtab) + 1,usbreadbuffer - 1);
+		if (serialmessageusb.substring(0, 1) == usbreadprefix && serialmessageusb.substring(usbreadbuffer - 1) == usbreadlimiter) {
 
-      char dataarray[serialdata.length() + 1];
+			String serialdata = serialmessageusb.substring(1, serialmessageusb.indexOf(usbreadtab));
+			String serialchecksum = serialmessageusb.substring(serialmessageusb.indexOf(usbreadtab) + 1, usbreadbuffer - 1);
 
-      serialdata.toCharArray(dataarray, serialdata.length() + 1);
+			char dataarray[serialdata.length() + 1];
 
-      long datacalculations = 0;
-      long datachecksum = 0;
+			serialdata.toCharArray(dataarray, serialdata.length() + 1);
 
-      for (int i = 0; i < serialdata.length(); i++){
-        datacalculations = dataarray[i] * (i + 1);
-        datachecksum += datacalculations;
-      }
+			long datacalculations = 0;
+			long datachecksum = 0;
 
-      datachecksum = datachecksum % usbreadmod;
+			for (int i = 0; i < serialdata.length(); i++) {
+				datacalculations = dataarray[i] * (i + 1);
+				datachecksum += datacalculations;
+			}
 
-      if (datachecksum == serialchecksum.toInt()){
-        usbdecoder(serialdata);
-      }
-      else{
-        //checksum ERROR
-        //usbwrite("ER0000000000");
-      }
+			datachecksum = datachecksum % usbreadmod;
 
-      serialmessageusb = "";
-    }
-  }
+			if (datachecksum == serialchecksum.toInt()) {
+				usbdecoder(serialdata);
+			}
+			else {
+				//checksum ERROR
+				//usbwrite("ER0000000000");
+			}
+
+			serialmessageusb = "";
+		}
+	}
 }
 
 void usbdecoder(String decoder) {
 
-  #define headersize 2
-  #define controlsize 3
-  #define datasize 64
+#define headersize 2
+#define controlsize 3
+#define datasize 64
 
-  String header = decoder.substring(0, headersize);
-  String control = decoder.substring(headersize, headersize + controlsize);
-  String data = decoder.substring(headersize + controlsize, headersize + controlsize + datasize);
+	String header = decoder.substring(0, headersize);
+	String control = decoder.substring(headersize, headersize + controlsize);
+	String data = decoder.substring(headersize + controlsize, headersize + controlsize + datasize);
 
-  String controllerstring;
-  String datawrite;
-  String dataequalizer;
+	String controllerstring;
+	String datawrite;
+	String dataequalizer;
 
-  if (header.substring(0, 1).equals("W")){
+	if (header.substring(0, 1).equals("W")) {
 
-    //Communication
-    if (header.equals("WC")){
-      if (control.equals("000")){
-        transfermode = data.toInt();
-      }  
-    }    
-    
-    //Recipes
-    if (header.equals("WR")){ 
-    }    
-  
-  }
+		//Communication
+		if (header.equals("WC")) {
+			if (control.equals("000")) {
+				transfermode = data.toInt();
+			}
+		}
 
-  if (header.substring(0,1).equals("W") || header.substring(0,1).equals("R")){
+		//Recipes
+		if (header.equals("WR")) {
+		}
 
-    //Communication
-    if (header.substring(1,2).equals("C")){
+	}
 
-      if (control.equals("000")){
-        datawrite = String(transfermode);
-        for (int k = 0; k < 2 - datawrite.length(); k ++){
-          dataequalizer += "0";
-        }
-        controllerstring += dataequalizer;
-        controllerstring += datawrite;
-        dataequalizer = "";
-      }
+	if (header.substring(0, 1).equals("W") || header.substring(0, 1).equals("R")) {
 
-    }
+		//Communication
+		if (header.substring(1, 2).equals("C")) {
 
-    //Recipes
-    if (header.substring(1,2).equals("R")){
+			if (control.equals("000")) {
+				datawrite = String(transfermode);
+				for (int k = 0; k < 2 - datawrite.length(); k++) {
+					dataequalizer += "0";
+				}
+				controllerstring += dataequalizer;
+				controllerstring += datawrite;
+				dataequalizer = "";
+			}
 
-      datawrite = usbreadeeprom(control.toInt());
+		}
 
-      for (int k = 0; k < 64 - datawrite.length(); k ++){
-        dataequalizer += " ";
-      }
-      controllerstring += dataequalizer;
-      controllerstring += datawrite;
-      dataequalizer = "";
+		//Recipes
+		if (header.substring(1, 2).equals("R")) {
 
-    }
+			datawrite = usbreadeeprom(control.toInt());
 
-    int bufferequalizer = datasize - controllerstring.length();
+			for (int k = 0; k < 64 - datawrite.length(); k++) {
+				dataequalizer += " ";
+			}
+			controllerstring += dataequalizer;
+			controllerstring += datawrite;
+			dataequalizer = "";
 
+		}
 
-    for (int i = 0; i < bufferequalizer; i ++){
-      controllerstring += " ";
-    }
+		int bufferequalizer = datasize - controllerstring.length();
 
-    usbwrite("R" + header.substring(1, 2) + control + controllerstring);
+		for (int i = 0; i < bufferequalizer; i++) {
+			controllerstring += " ";
+		}
 
-  }
+		usbwrite("R" + header.substring(1, 2) + control + controllerstring);
+	
+	}
 
 }
 
 void usbwrite(String serialdata) {
-  //sttings
-  #define usbwritebuffer 75
-  #define usbwritemod 99
-  #define usbwriteprefix "@"
-  #define usbwritelimiter "#"
-  #define usbwritetab "%"
+	//sttings
+#define usbwritebuffer 75
+#define usbwritemod 99
+#define usbwriteprefix "@"
+#define usbwritelimiter "#"
+#define usbwritetab "%"
 
-  //function
-  char dataarray[serialdata.length() + 1];
+//function
+	char dataarray[serialdata.length() + 1];
 
-  serialdata.toCharArray(dataarray, serialdata.length() + 1);
+	serialdata.toCharArray(dataarray, serialdata.length() + 1);
 
-  long datacalculations = 0;
-  long datachecksum = 0;
+	long datacalculations = 0;
+	long datachecksum = 0;
+	
+	for (int i = 0; i < serialdata.length(); i++) {
+		datacalculations = dataarray[i] * (i + 1);
+		datachecksum = datachecksum + datacalculations;
+	}
 
-  for (int i = 0; i < serialdata.length(); i++){
-    datacalculations = dataarray[i] * (i + 1);
-    datachecksum = datachecksum + datacalculations;
-  }
+	datachecksum = datachecksum % usbwritemod;
 
-  datachecksum = datachecksum % usbwritemod;
+	String checksumsize = String(datachecksum);
+	int dataequalizer = usbwritebuffer - 3 - serialdata.length() - checksumsize.length();
+	String checksum;
 
-  String checksumsize = String(datachecksum);
-  int dataequalizer = usbwritebuffer - 3 - serialdata.length() - checksumsize.length();
-  String checksum;
+	for (int i = 0; i < dataequalizer; i++) {
+		checksum = checksum + "0";
+	}
 
-  for (int i = 0; i < dataequalizer; i++){
-    checksum = checksum + "0";
-  }
+	checksum = checksum + checksumsize;
 
-  checksum = checksum + checksumsize;
-
-  Serial.print(usbwriteprefix + serialdata + usbwritetab + checksum + usbwritelimiter + '\n');
-  Serial.flush();
+	Serial.print(usbwriteprefix + serialdata + usbwritetab + checksum + usbwritelimiter + '\n');
+	Serial.flush();
 }
 
 String usbreadeeprom(int controller) {
 
-  String eepromstring = F("                  130  130    20    20   1  200 0   1     1  1  ");
+	String eepromstring = F("                  130  130    20    20   1  200 0   1     1  1  ");
 
-  return eepromstring;
+	return eepromstring;
 }
