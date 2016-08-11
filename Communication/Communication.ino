@@ -7,6 +7,10 @@
 #define serialrate        115200
 #define serialmessagesize 200
 
+//version
+#define hardware		  1.13
+#define firmware		  1.59
+
 //setings  
   //threads controllers
 	ThreadController controller = ThreadController();
@@ -19,6 +23,8 @@
 	String serialmessageusb;
 	int transfermode = 0;
 	int glcdcontrolstep = 0;
+
+	String recipestring[2];
 
 void setup(void) {
 
@@ -37,6 +43,11 @@ void setup(void) {
 			communicationusb.add(&communicationusbread);
 			communicationusbread.onRun(usbread);
 			communicationusbread.setInterval(0);
+
+
+	for (int i = 0; i < 2; i++) {
+		recipestring[i] = F("                  130  130    20    20   1  200 0   1     1  1  ");
+	}
 
 }
 
@@ -70,8 +81,6 @@ void communication(void) {
 	if (glcdcontrolstep > 8) {
 		glcdcontrolstep = 0;
 		transfermode = 2;
-
-		Serial.print('\n');
 	}
 }
 
@@ -106,7 +115,7 @@ void usbread(void) {
 				datacalculations = dataarray[i] * (i + 1);
 				datachecksum += datacalculations;
 			}
-
+		
 			datachecksum = datachecksum % usbreadmod;
 
 			if (datachecksum == serialchecksum.toInt()) {
@@ -145,6 +154,10 @@ void usbdecoder(String decoder) {
 			}
 		}
 
+		//Version
+		if (header.equals("WV")) {
+		}
+
 		//Recipes
 		if (header.equals("WR")) {
 		}
@@ -168,6 +181,19 @@ void usbdecoder(String decoder) {
 
 		}
 
+		//Version
+		if (header.substring(1, 2).equals("V")) {
+
+			datawrite = " H " + String(hardware) + " F " + String(firmware);
+			for (int k = 0; k < 14 - datawrite.length(); k++) {
+				dataequalizer += " ";
+			}
+			controllerstring += dataequalizer;
+			controllerstring += datawrite;
+			dataequalizer = "";
+
+		}
+
 		//Recipes
 		if (header.substring(1, 2).equals("R")) {
 
@@ -181,6 +207,7 @@ void usbdecoder(String decoder) {
 			dataequalizer = "";
 
 		}
+
 
 		int bufferequalizer = datasize - controllerstring.length();
 
@@ -196,11 +223,11 @@ void usbdecoder(String decoder) {
 
 void usbwrite(String serialdata) {
 	//sttings
-#define usbwritebuffer 75
-#define usbwritemod 99
-#define usbwriteprefix "@"
-#define usbwritelimiter "#"
-#define usbwritetab "%"
+	#define usbwritebuffer 75
+	#define usbwritemod 99
+	#define usbwriteprefix "@"
+	#define usbwritelimiter "#"
+	#define usbwritetab "%"
 
 //function
 	char dataarray[serialdata.length() + 1];
@@ -227,13 +254,14 @@ void usbwrite(String serialdata) {
 
 	checksum = checksum + checksumsize;
 
-	Serial.print(usbwriteprefix + serialdata + usbwritetab + checksum + usbwritelimiter + '\n');
+	Serial.print(usbwriteprefix + serialdata + usbwritetab + checksum + usbwritelimiter);
+	Serial.print('\n');
 	Serial.flush();
 }
 
 String usbreadeeprom(int controller) {
 
-	String eepromstring = F("                  130  130    20    20   1  200 0   1     1  1  ");
-
+	String eepromstring = recipestring[0];
+	
 	return eepromstring;
 }
