@@ -8,6 +8,8 @@
 #define serialmessagesize 200
 
 //version
+#define product       500
+#define serialnumber  1004
 #define hardware		  1.13
 #define firmware		  1.59
 
@@ -184,8 +186,8 @@ void usbdecoder(String decoder) {
 		//Version
 		if (header.substring(1, 2).equals("V")) {
 
-			datawrite = " H " + String(hardware) + " F " + String(firmware);
-			for (int k = 0; k < 14 - datawrite.length(); k++) {
+			datawrite = " P " + String(product) + " H " + String(hardware) + " F " + String(firmware)+ " S " + String(serialnumber);
+			for (int k = 0; k < 27 - datawrite.length(); k++) {
 				dataequalizer += " ";
 			}
 			controllerstring += dataequalizer;
