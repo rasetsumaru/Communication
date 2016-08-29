@@ -1,5 +1,6 @@
 //included libraries
 #include "avr/pgmspace.h"
+#include "Wire.h"
 #include "Thread.h"
 #include "ThreadController.h"
 
@@ -8,10 +9,17 @@
 #define serialmessagesize 200
 
 //version
-#define product       500
-#define serialnumber  1004
+#define product           500
+#define serialnumber      1004
 #define hardware		  1.13
 #define firmware		  1.59
+
+//eeprom
+#define eeprom               0x50
+#define eeprompage           64
+#define configurationaddress 501
+#define calibrationaddress   503
+#define counteraddress       505
 
 //setings  
   //threads controllers
@@ -26,9 +34,9 @@
 	int transfermode = 0;
 	int glcdcontrolstep = 0;
 
-	String recipestring[2];
-
 void setup(void) {
+
+	Wire.begin();
 
 	Serial.begin(serialrate);
 	serialmessageusb.reserve(serialmessagesize);
@@ -45,12 +53,6 @@ void setup(void) {
 			communicationusb.add(&communicationusbread);
 			communicationusbread.onRun(usbread);
 			communicationusbread.setInterval(0);
-
-
-	for (int i = 0; i < 2; i++) {
-		recipestring[i] = F("                  130  130    20    20   1  200 0   1     1  1  ");
-	}
-
 }
 
 void loop(void) {
@@ -162,6 +164,9 @@ void usbdecoder(String decoder) {
 
 		//Recipes
 		if (header.equals("WR")) {
+      char   eepromdata [eeprompage + 2];
+      data.toCharArray(eepromdata, eeprompage + 2);
+      eepromwrite(eeprom, (control.toInt() - 1) * eeprompage, eepromdata);
 		}
 
 	}
@@ -199,7 +204,7 @@ void usbdecoder(String decoder) {
 		//Recipes
 		if (header.substring(1, 2).equals("R")) {
 
-			datawrite = usbreadeeprom(control.toInt());
+			datawrite = readrecipe(control.toInt());
 
 			for (int k = 0; k < 64 - datawrite.length(); k++) {
 				dataequalizer += " ";
@@ -261,9 +266,136 @@ void usbwrite(String serialdata) {
 	Serial.flush();
 }
 
-String usbreadeeprom(int controller) {
+//eeprom read
+void eepromread(int deviceaddress, unsigned int eeaddress, unsigned char* data, unsigned int num_chars){
 
-	String eepromstring = recipestring[0];
-	
+  unsigned char i = 0;
+
+  Wire.beginTransmission(deviceaddress);
+  Wire.write((int)(eeaddress >> 8));
+  Wire.write((int)(eeaddress & 0xFF));
+  Wire.endTransmission();
+
+  Wire.requestFrom(deviceaddress, num_chars);
+
+  while(Wire.available()){
+    data[i ++] = Wire.read();
+  }
+
+}
+
+//eeprom write
+void eepromwrite(int deviceaddress, unsigned int eeaddress, char* data){
+
+  unsigned char i = 0;
+  unsigned char counter = 0;
+  unsigned int  address;
+  unsigned int  page_space;
+  unsigned int  page = 0;
+  unsigned int  num_writes;
+  unsigned int  data_len = 0;
+  unsigned char first_write_size;
+  unsigned char last_write_size;
+  unsigned char write_size;
+
+  do{
+    data_len ++;
+  }
+  while(data[data_len]);
+
+  page_space = int(((eeaddress / 64) + 1) * 64) - eeaddress;
+
+  if (page_space>16){
+    first_write_size = page_space - ((page_space / 16) * 16);
+
+    if (first_write_size == 0){
+      first_write_size = 16;
+    }
+  }
+  else{
+    first_write_size = page_space;
+  }
+
+  if (data_len > first_write_size){
+    last_write_size = (data_len - first_write_size) % 16;
+  }
+
+  if (data_len > first_write_size){
+    num_writes = ((data_len - first_write_size) / 16) + 2;
+  }
+  else{
+    num_writes = 1;
+  }
+
+  i = 0;
+  address = eeaddress;
+
+  for(page = 0; page < num_writes; page ++){
+
+    if(page == 0){
+      write_size = first_write_size;
+    }
+    else if(page == (num_writes - 1)){
+      write_size = last_write_size;
+    }
+    else{
+      write_size = 16;
+    }
+
+    Wire.beginTransmission(deviceaddress);
+    Wire.write((int)((address) >> 8));
+    Wire.write((int)((address) & 0xFF));
+
+    counter = 0;
+
+    do{
+      Wire.write((byte) data[i]);
+      i ++;
+      counter ++;
+    }
+    while((data[i]) && (counter < write_size));
+
+    Wire.endTransmission();
+
+    address += write_size;
+    delay(10);
+  }
+}
+
+//read recipe
+String readrecipe(int controller){
+
+	//------
+	/*
+	recip                abcdefghijklmnop   16
+	resistancelower     +2000               05
+	resistanceupper     +2000               05
+	frequencylower      +30000              06
+	frequencyupper      +30000              06
+	sweepspeed          +100                04
+	level               +5000               05
+	select              +9                  02
+	wav                 +255                04
+	limit               +10000              06
+	timeoutplayback	    +10				          03
+	*/
+	//------
+
+	unsigned char rdata[32];
+	char bytearray[eeprompage / 2];
+
+	String eepromstring;
+
+	for (int i = (controller - 1) * 2; i < controller * 2; i ++){
+		eepromread(eeprom, i * (eeprompage / 2), rdata, eeprompage / 2);
+
+		for (int k = 0; k < eeprompage / 2; k ++){
+			bytearray[k] = rdata[k];
+			eepromstring += bytearray[k];
+		}
+
+	}
+
 	return eepromstring;
 }
+
