@@ -21,6 +21,9 @@
 #define calibrationaddress   503
 #define counteraddress       505
 
+//real time clock
+#define rtcaddress 0x68
+
 //setings  
   //threads controllers
 	ThreadController controller = ThreadController();
@@ -33,6 +36,12 @@
 	String serialmessageusb;
 	int transfermode = 0;
 	int glcdcontrolstep = 0;
+
+//rtc
+	String rtc;
+	String rtccurrent[3];
+	int    rtccursor;
+	int    rtcweek;
 
 void setup(void) {
 
@@ -135,6 +144,7 @@ void usbread(void) {
 	}
 }
 
+//usb decoder
 void usbdecoder(String decoder) {
 
 #define headersize 2
@@ -158,17 +168,27 @@ void usbdecoder(String decoder) {
 			}
 		}
 
-		//Version
-		if (header.equals("WV")) {
-		}
-
 		//Recipes
 		if (header.equals("WR")) {
-      char   eepromdata [eeprompage + 2];
-      data.toCharArray(eepromdata, eeprompage + 2);
-      eepromwrite(eeprom, (control.toInt() - 1) * eeprompage, eepromdata);
+		  char   eepromdata [eeprompage + 2];
+		  data.toCharArray(eepromdata, eeprompage + 2);
+		  eepromwrite(eeprom, (control.toInt() - 1) * eeprompage, eepromdata);
 		}
 
+		//Settings
+		if (header.equals("WS")) {
+		  char   eepromdata [eeprompage + 2];
+		  data.toCharArray(eepromdata, eeprompage + 2);
+		  eepromwrite(eeprom, (configurationaddress - 1) * eeprompage, eepromdata);
+		}
+
+		//RTC
+		if (header.equals("WT")) {
+		  rtccurrent[0] = data.substring(0,9);
+	      rtccurrent[1] = data.substring(10, 20);
+	      rtcweek = data.substring(21, 22).toInt();
+		  setrtc();
+		}
 	}
 
 	if (header.substring(0, 1).equals("W") || header.substring(0, 1).equals("R")) {
@@ -204,7 +224,7 @@ void usbdecoder(String decoder) {
 		//Recipes
 		if (header.substring(1, 2).equals("R")) {
 
-			datawrite = readrecipe(control.toInt());
+			datawrite = readeepromdata(control.toInt());
 
 			for (int k = 0; k < 64 - datawrite.length(); k++) {
 				dataequalizer += " ";
@@ -215,6 +235,19 @@ void usbdecoder(String decoder) {
 
 		}
 
+		//Settings
+		if (header.substring(1, 2).equals("S")) {
+
+			datawrite = readeepromdata (configurationaddress);
+
+			for (int k = 0; k < 64 - datawrite.length(); k++) {
+				dataequalizer += " ";
+			}
+			controllerstring += dataequalizer;
+			controllerstring += datawrite;
+			dataequalizer = "";
+
+		}
 
 		int bufferequalizer = datasize - controllerstring.length();
 
@@ -228,6 +261,7 @@ void usbdecoder(String decoder) {
 
 }
 
+//usb write
 void usbwrite(String serialdata) {
 	//sttings
 	#define usbwritebuffer 75
@@ -362,24 +396,8 @@ void eepromwrite(int deviceaddress, unsigned int eeaddress, char* data){
   }
 }
 
-//read recipe
-String readrecipe(int controller){
-
-	//------
-	/*
-	recip                abcdefghijklmnop   16
-	resistancelower     +2000               05
-	resistanceupper     +2000               05
-	frequencylower      +30000              06
-	frequencyupper      +30000              06
-	sweepspeed          +100                04
-	level               +5000               05
-	select              +9                  02
-	wav                 +255                04
-	limit               +10000              06
-	timeoutplayback	    +10				          03
-	*/
-	//------
+//read eeprom data
+String readeepromdata(int controller){
 
 	unsigned char rdata[32];
 	char bytearray[eeprompage / 2];
@@ -399,3 +417,40 @@ String readrecipe(int controller){
 	return eepromstring;
 }
 
+//set rtc
+void setrtc(void){
+
+	byte zero = 0x00;
+
+	byte rtcseconds = rtccurrent[0].substring( 7,  9).toInt();
+	byte rtcminutes = rtccurrent[0].substring( 4,  6).toInt();
+	byte rtchours   = rtccurrent[0].substring( 1,  3).toInt();
+
+	byte rtcdayoftheweek = rtcweek;
+
+	byte rtcday     = rtccurrent[1].substring( 3,  5).toInt();
+	byte rtcmonth   = rtccurrent[1].substring( 0,  2).toInt();
+	byte rtcyear    = rtccurrent[1].substring( 8, 10).toInt();
+
+	Wire.beginTransmission(rtcaddress);
+	Wire.write(zero); //Stop no CI
+	Wire.write(conversiontoBCD(rtcseconds));
+	Wire.write(conversiontoBCD(rtcminutes));
+	Wire.write(conversiontoBCD(rtchours));
+	Wire.write(conversiontoBCD(rtcdayoftheweek));
+	Wire.write(conversiontoBCD(rtcday));
+	Wire.write(conversiontoBCD(rtcmonth));
+	Wire.write(conversiontoBCD(rtcyear));
+	Wire.write(zero); //Start no CI
+	Wire.endTransmission(); 
+}
+
+//convert from decimal to BCD
+byte conversiontoBCD(byte val){ 
+	return ((val / 10 * 16) + (val % 10));
+}
+
+//convert from BCD to decimal
+byte conversiontodecimal(byte conversion){ 
+	return ((conversion / 16 * 10) + (conversion % 16));
+}
